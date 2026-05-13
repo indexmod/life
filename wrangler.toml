@@ -1,0 +1,7 @@
+name = "life"
+main = "worker.js"
+compatibility_date = "2026-05-13"
+
+[[r2_buckets]]
+binding = "PAGES"
+bucket_name = "indexcms-pages"
