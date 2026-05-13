@@ -1,47 +1,27 @@
-export function generateMeta(entity) {
+export function buildMeta({ id, title, summary, image }) {
+  const SITE = "https://life.indexmod.press";
 
-  const title =
-    entity.title || entity.id;
-
-  const description =
-    entity.description ||
-    `${title} is a semantic entity inside LIFE runtime.`;
-
-  const image =
-    entity.image ||
-    'https://life.indexmod.press/default-og.jpg';
+  const url = `${SITE}/entity/${id}`;
 
   return {
-
+    id,
     title,
-
-    description,
-
-    canonical:
-      `https://life.indexmod.press/entity/${entity.id}`,
+    summary,
+    image: image || `${SITE}/default-og.jpg`,
+    url,
 
     og: {
       title,
-      description,
-      image,
-      type: 'article'
+      description: summary,
+      image: image || `${SITE}/default-og.jpg`,
+      url
     },
 
     twitter: {
-      card: 'summary_large_image',
+      card: "summary_large_image",
       title,
-      description,
-      image
-    },
-
-    jsonld: {
-      '@context': 'https://schema.org',
-      '@type': 'Thing',
-      name: title,
-      description,
-      image,
-      url:
-        `https://life.indexmod.press/entity/${entity.id}`
+      description: summary,
+      image: image || `${SITE}/default-og.jpg`
     }
   };
 }

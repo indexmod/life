@@ -1,0 +1,15 @@
+{
+  "siteName": "LIFE",
+  "defaultImage": "https://life.indexmod.press/default-og.jpg",
+
+  "card": {
+    "font": "Georgia",
+    "titleSize": "42px",
+    "textSize": "18px"
+  },
+
+  "og": {
+    "type": "article",
+    "twitterCard": "summary_large_image"
+  }
+}

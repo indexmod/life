@@ -1,147 +1,195 @@
 // =========================================================
-// LIFE — ultra-light index renderer
+// LIFE — semantic entity runtime (LIGHT INDEX VERSION)
 // =========================================================
 
 const SITE = 'https://life.indexmod.press';
-const file = slug => `${slug}.md`;
+const CANONICAL = 'https://indexmod.press';
 
 // =========================================================
-// HTML
+// LOAD INDEX (FAST PATH)
 // =========================================================
-function page(body) {
-  return new Response(`<!doctype html>
+async function loadIndex(env) {
+  const obj = await env.PAGES.get('_system/index.json');
+  if (!obj) return [];
+  return JSON.parse(await obj.text());
+}
+
+// =========================================================
+// LOAD MD (ONLY FOR SINGLE PAGE)
+// =========================================================
+const file = slug => `${slug}.md`;
+
+async function getFile(env, slug) {
+  const obj = await env.PAGES.get(file(slug));
+  return obj ? await obj.text() : null;
+}
+
+// =========================================================
+// PARSER (MINIMAL)
+// =========================================================
+function parse(md = '') {
+  const m = md.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+
+  if (!m) {
+    return { meta: {}, content: md };
+  }
+
+  const meta = {};
+
+  m[1].split('\n').forEach(line => {
+    const i = line.indexOf(':');
+    if (i === -1) return;
+
+    meta[line.slice(0, i).trim()] =
+      line.slice(i + 1).trim();
+  });
+
+  return {
+    meta,
+    content: m[2]
+  };
+}
+
+// =========================================================
+// SUMMARY (LIGHT)
+// =========================================================
+function summary(t = '') {
+  return t
+    .replace(/\[\[(.*?)\]\]/g, '')
+    .replace(/!\[.*?\]\(.*?\)/g, '')
+    .replace(/[#>*_\-\n]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180);
+}
+
+// =========================================================
+// IMAGE
+// =========================================================
+function image(content = '') {
+  const md = content.match(/!\[.*?\]\((.*?)\)/);
+  if (md) return md[1];
+
+  return `${SITE}/default-og.jpg`;
+}
+
+// =========================================================
+// META BUILDER (FB + TW + OG)
+// =========================================================
+function meta(entity) {
+  const desc = entity.summary || '';
+
+  return `
+<title>${entity.title} — LIFE</title>
+
+<meta name="description" content="${desc}">
+
+<link rel="canonical" href="${entity.url}">
+
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="LIFE">
+<meta property="og:title" content="${entity.title}">
+<meta property="og:description" content="${desc}">
+<meta property="og:url" content="${entity.url}">
+<meta property="og:image" content="${entity.image}">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${entity.title}">
+<meta name="twitter:description" content="${desc}">
+<meta name="twitter:image" content="${entity.image}">
+`;
+}
+
+// =========================================================
+// PAGE WRAPPER
+// =========================================================
+function page(meta, body) {
+  return new Response(`
+<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-
+${meta}
 <style>
-
-body {
-  margin: 0;
-  padding: 40px;
+body{
   font-family: Georgia, serif;
-  background: #fff;
-  color: #000;
+  max-width: 900px;
+  margin:0 auto;
+  padding:60px 20px;
+  font-size:18px;
+  line-height:1.6;
 }
-
-h1 {
-  font-size: 22px;
-  font-weight: normal;
-  margin-bottom: 30px;
+.grid{
+  display:grid;
+  gap:10px;
 }
-
-/* =========================
-   FLAT TOPIC GRID
-   ========================= */
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 6px;
+.card{
+  padding:6px 0;
 }
-
-a {
-  text-decoration: none;
-  color: #000;
-  font-size: 14px;
-  line-height: 1.3;
-}
-
-a:hover {
-  text-decoration: underline;
-}
-
-.meta {
-  display: none; /* убрали всё лишнее */
-}
-
-.card {
-  padding: 2px 0;
-  border: none;
-}
-
+a{color:blue;text-decoration:none}
 </style>
-
 </head>
-
 <body>
-
 ${body}
-
 </body>
-</html>`, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+</html>
+`, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8"
+    }
   });
 }
 
 // =========================================================
-// STORAGE
+// ENTITY PAGE (NO GRAPH, NO BACKLINKS COMPUTE)
 // =========================================================
-async function listFiles(env) {
-  const res = await env.PAGES.list();
+async function renderEntity(env, id, index) {
 
-  return res.objects
-    .filter(o => o.key.endsWith('.md'))
-    .map(o => o.key.replace('.md', ''));
+  const item = index.find(i => i.id === id);
+
+  if (!item) {
+    return new Response("not found", { status: 404 });
+  }
+
+  const md = await getFile(env, id);
+  const parsed = parse(md);
+
+  const entity = {
+    id,
+    title: item.title,
+    summary: item.summary || summary(parsed.content),
+    image: item.image,
+    url: `${SITE}/entity/${id}`
+  };
+
+  return page(meta(entity), `
+<h1>${entity.title}</h1>
+
+<img src="${entity.image}" style="max-width:100%;margin:20px 0;">
+
+<p>${entity.summary}</p>
+
+<p><a href="${CANONICAL}/${id}">canonical</a></p>
+`);
 }
 
 // =========================================================
-// SIMPLE PARSE (ONLY TITLE)
+// HOME (VERY LIGHT GRID)
 // =========================================================
-async function getTitle(env, slug) {
-  const obj = await env.PAGES.get(file(slug));
-  if (!obj) return slug;
-
-  const md = await obj.text();
-
-  const match = md.match(/title:\s*(.*)/);
-  return match ? match[1].trim() : slug;
-}
-
-// =========================================================
-// INDEX
-// =========================================================
-async function buildIndex(env) {
-  const slugs = await listFiles(env);
-
-  const items = await Promise.all(
-    slugs.map(async slug => {
-      const title = await getTitle(env, slug);
-
-      return {
-        slug,
-        title
-      };
-    })
-  );
-
-  items.sort((a, b) =>
-    a.title.localeCompare(b.title)
-  );
-
-  return items;
-}
-
-// =========================================================
-// RENDER INDEX
-// =========================================================
-function renderIndex(items) {
-
-  return page(`
-
+function renderHome(index) {
+  return page("", `
 <h1>LIFE</h1>
 
 <div class="grid">
-
-${items.map(i => `
-<a href="/entity/${i.slug}">
+${index.map(i => `
+<div class="card">
+<a href="/entity/${i.id}">
 ${i.title}
 </a>
-`).join('')}
-
 </div>
-
+`).join('')}
+</div>
 `);
 }
 
@@ -149,49 +197,29 @@ ${i.title}
 // ROUTER
 // =========================================================
 export default {
-
   async fetch(req, env) {
 
     const url = new URL(req.url);
     const p = url.pathname;
 
-    try {
+    const index = await loadIndex(env);
 
-      // ONLY INDEX MODE (FAST PATH)
-      if (p === '/') {
-
-        const items =
-          await buildIndex(env);
-
-        return renderIndex(items);
-      }
-
-      // SIMPLE ENTITY PASS-THROUGH (NO META, NO GRAPH)
-      if (p.startsWith('/entity/')) {
-
-        const slug = p.split('/').pop();
-        const obj = await env.PAGES.get(file(slug));
-
-        if (!obj) {
-          return new Response('not found', { status: 404 });
-        }
-
-        const md = await obj.text();
-
-        return new Response(md, {
-          headers: {
-            'Content-Type': 'text/plain'
-          }
-        });
-      }
-
-      return new Response('404', { status: 404 });
-
-    } catch (e) {
-
-      return new Response(e.message, {
-        status: 500
-      });
+    // HOME
+    if (p === '/') {
+      return renderHome(index);
     }
+
+    // ENTITY
+    if (p.startsWith('/entity/')) {
+      const id = p.split('/').pop();
+      return renderEntity(env, id, index);
+    }
+
+    // SIMPLE JSON INDEX (FOR DEBUG)
+    if (p === '/index.json') {
+      return Response.json(index);
+    }
+
+    return new Response("404", { status: 404 });
   }
 };

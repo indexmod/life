@@ -1,17 +1,9 @@
-export function calculateRank(entity) {
+export function rank(entity) {
+  let score = 0;
 
-  const incoming =
-    entity.linkedFrom?.length || 0;
+  if (entity.summary) score += 1;
+  if (entity.image) score += 1;
+  if (entity.linksTo?.length) score += entity.linksTo.length * 0.5;
 
-  const outgoing =
-    entity.linksTo?.length || 0;
-
-  const freshness =
-    entity.updated ? 1 : 0;
-
-  return (
-    incoming * 2 +
-    outgoing +
-    freshness
-  );
+  return score;
 }
