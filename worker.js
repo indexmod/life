@@ -1,10 +1,8 @@
 // =========================================================
-// LIFE — semantic entity runtime
+// LIFE — lightweight semantic index runtime
+// optimized entity/meta/index worker
 // =========================================================
 
-// =========================================================
-// HELPERS
-// =========================================================
 const SITE = 'https://life.indexmod.press';
 const CANONICAL = 'https://indexmod.press';
 
@@ -12,8 +10,8 @@ const CANONICAL = 'https://indexmod.press';
 // HTML
 // =========================================================
 function page({ title = 'LIFE', meta = '', body = '' }) {
-  return new Response(`
-<!doctype html>
+
+  return new Response(`<!doctype html>
 <html>
 <head>
 
@@ -39,17 +37,11 @@ body {
   background: #fff;
   color: #000;
 
-  max-width: 980px;
-  margin: 0 auto;
-
-  padding: 80px 32px;
-
-  line-height: 1.7;
-  font-size: 20px;
+  padding: 40px 24px;
 }
 
 a {
-  color: blue;
+  color: #000;
   text-decoration: none;
 }
 
@@ -58,53 +50,63 @@ a:hover {
 }
 
 h1 {
-  font-size: 54px;
+  font-size: 34px;
   font-weight: normal;
-  line-height: 1.1;
   margin: 0 0 30px;
 }
 
-h2 {
-  font-size: 24px;
-  font-weight: normal;
-  margin-top: 50px;
-}
-
-pre {
-  white-space: pre-wrap;
-}
-
-.label {
-  font-size: 12px;
-  text-transform: uppercase;
-  opacity: .4;
-  letter-spacing: .08em;
-}
-
-.entity {
-  padding-bottom: 80px;
+img {
+  max-width: 100%;
+  display: block;
 }
 
 .grid {
   display: grid;
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill,minmax(180px,1fr));
+  gap: 10px;
 }
 
 .card {
-  border-bottom: 1px solid #ddd;
-  padding-bottom: 18px;
+  border: 1px solid #eee;
+  padding: 10px;
+  overflow: hidden;
+}
+
+.card img {
+  aspect-ratio: 1.91/1;
+  object-fit: cover;
+  margin-bottom: 8px;
+}
+
+.title {
+  font-size: 15px;
+  line-height: 1.25;
 }
 
 .meta {
-  opacity: .6;
-  font-size: 14px;
+  opacity: .5;
+  font-size: 11px;
+  margin-top: 4px;
 }
 
 .hero {
   width: 100%;
-  max-width: 900px;
-  display: block;
-  margin: 30px 0;
+  aspect-ratio: 1.91/1;
+  object-fit: cover;
+  margin: 24px 0;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.links a {
+  border: 1px solid #ddd;
+  padding: 4px 8px;
+  font-size: 12px;
 }
 
 </style>
@@ -116,11 +118,12 @@ pre {
 ${body}
 
 </body>
-</html>
-`, {
+</html>`, {
+
     headers: {
       'Content-Type': 'text/html; charset=utf-8'
     }
+
   });
 }
 
@@ -130,12 +133,19 @@ ${body}
 const file = slug => `${slug}.md`;
 
 async function getFile(env, slug) {
-  const obj = await env.PAGES.get(file(slug));
-  return obj ? await obj.text() : null;
+
+  const obj =
+    await env.PAGES.get(file(slug));
+
+  return obj
+    ? await obj.text()
+    : null;
 }
 
 async function listFiles(env) {
-  const res = await env.PAGES.list();
+
+  const res =
+    await env.PAGES.list();
 
   return res.objects
     .filter(o => o.key.endsWith('.md'))
@@ -147,9 +157,11 @@ async function listFiles(env) {
 // =========================================================
 function parse(md = '') {
 
-  const m = md.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  const m =
+    md.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 
   if (!m) {
+
     return {
       meta: {},
       content: md
@@ -164,10 +176,10 @@ function parse(md = '') {
 
     if (i === -1) return;
 
-    const key = line.slice(0, i).trim();
-    const value = line.slice(i + 1).trim();
-
-    meta[key] = value;
+    meta[
+      line.slice(0, i).trim()
+    ] =
+      line.slice(i + 1).trim();
   });
 
   return {
@@ -177,22 +189,24 @@ function parse(md = '') {
 }
 
 // =========================================================
-// SUMMARY
+// CLEAN SUMMARY
 // =========================================================
 function summary(content = '') {
+
   return content
-    .replace(/\[\[(.*?)\]\]/g, '')
-    .replace(/!\[.*?\]\((.*?)\)/g, '')
-    .replace(/[#>*_\-\n]/g, ' ')
+
+    .replace(/!\[.*?\]\(.*?\)/g, '')
+    .replace(/\[\[(.*?)\]\]/g, '$1')
+    .replace(/[#>*_`-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 220);
+    .slice(0, 180);
 }
 
 // =========================================================
 // IMAGE EXTRACTION
 // =========================================================
-function image(content = '') {
+function extractImage(content = '') {
 
   const md =
     content.match(/!\[.*?\]\((.*?)\)/);
@@ -200,7 +214,7 @@ function image(content = '') {
   if (md) return md[1];
 
   const raw =
-    content.match(/https?:\/\/\S+\.(jpg|jpeg|png|webp|gif)/i);
+    content.match(/https?:\/\/\S+\.(jpg|jpeg|png|webp)/i);
 
   if (raw) return raw[0];
 
@@ -210,25 +224,21 @@ function image(content = '') {
 // =========================================================
 // LINKS
 // =========================================================
-function extractLinks(content = '') {
-  const matches =
-    [...content.matchAll(/\[\[(.*?)\]\]/g)];
+function links(content = '') {
 
-  return matches.map(m =>
-    m[1].trim().toLowerCase()
+  return [
+    ...content.matchAll(/\[\[(.*?)\]\]/g)
+  ].map(m =>
+    m[1]
+      .trim()
+      .toLowerCase()
   );
 }
 
 // =========================================================
 // ENTITY
 // =========================================================
-function generateEntity(slug, parsed) {
-
-  const linksTo =
-    extractLinks(parsed.content);
-
-  const desc =
-    summary(parsed.content);
+function entity(slug, parsed) {
 
   return {
 
@@ -242,45 +252,38 @@ function generateEntity(slug, parsed) {
       parsed.meta.type ||
       'entity',
 
-    energy:
-      parsed.meta.energy ||
-      'unknown',
-
-    temperament:
-      parsed.meta.temperament ||
-      'neutral',
-
-    summary: desc,
+    summary:
+      summary(parsed.content),
 
     image:
       parsed.meta.image ||
-      image(parsed.content),
+      extractImage(parsed.content),
 
-    linksTo,
+    linksTo:
+      links(parsed.content),
 
     linkedFrom: [],
-
-    updated:
-      new Date().toISOString(),
 
     canonical:
       `${CANONICAL}/${slug}`,
 
-    life:
-      `${SITE}/entity/${slug}`
+    url:
+      `${SITE}/entity/${slug}`,
+
+    updated:
+      new Date().toISOString()
   };
 }
 
 // =========================================================
-// GRAPH
+// RUNTIME
 // =========================================================
-async function buildGraph(env) {
+async function runtime(env) {
 
   const slugs =
     await listFiles(env);
 
   const entities = [];
-  const graph = {};
   const backlinks = {};
 
   for (const slug of slugs) {
@@ -293,59 +296,57 @@ async function buildGraph(env) {
     const parsed =
       parse(md);
 
-    const entity =
-      generateEntity(slug, parsed);
+    const e =
+      entity(slug, parsed);
 
-    entities.push(entity);
-
-    graph[slug] =
-      entity.linksTo;
+    entities.push(e);
   }
 
-  entities.forEach(entity => {
+  // backlinks
+  entities.forEach(e => {
 
-    entity.linksTo.forEach(target => {
+    e.linksTo.forEach(target => {
 
       if (!backlinks[target]) {
         backlinks[target] = [];
       }
 
-      backlinks[target]
-        .push(entity.id);
+      backlinks[target].push(e.id);
     });
   });
 
-  entities.forEach(entity => {
+  // rank
+  entities.forEach(e => {
 
-    entity.linkedFrom =
-      backlinks[entity.id] || [];
+    e.linkedFrom =
+      backlinks[e.id] || [];
 
-    entity.rank =
-      entity.linkedFrom.length * 2 +
-      entity.linksTo.length;
+    e.rank =
+      e.linkedFrom.length +
+      e.linksTo.length;
   });
 
-  return {
-    entities,
-    graph,
-    backlinks
-  };
+  entities.sort((a, b) =>
+    b.rank - a.rank
+  );
+
+  return entities;
 }
 
 // =========================================================
 // META
 // =========================================================
-function meta(entity) {
+function meta(e) {
 
   return `
 
-<title>${entity.title} — LIFE</title>
+<title>${e.title}</title>
 
 <meta name="description"
-content="${entity.summary}">
+content="${e.summary}">
 
 <link rel="canonical"
-href="${entity.canonical}">
+href="${e.canonical}">
 
 <meta name="robots"
 content="index,follow,max-image-preview:large">
@@ -353,20 +354,17 @@ content="index,follow,max-image-preview:large">
 <meta property="og:type"
 content="article">
 
-<meta property="og:site_name"
-content="LIFE">
-
 <meta property="og:title"
-content="${entity.title}">
+content="${e.title}">
 
 <meta property="og:description"
-content="${entity.summary}">
+content="${e.summary}">
 
 <meta property="og:url"
-content="${entity.life}">
+content="${e.url}">
 
 <meta property="og:image"
-content="${entity.image}">
+content="${e.image}">
 
 <meta property="og:image:width"
 content="1200">
@@ -374,160 +372,48 @@ content="1200">
 <meta property="og:image:height"
 content="630">
 
+<meta property="og:site_name"
+content="LIFE">
+
 <meta name="twitter:card"
 content="summary_large_image">
 
 <meta name="twitter:title"
-content="${entity.title}">
+content="${e.title}">
 
 <meta name="twitter:description"
-content="${entity.summary}">
+content="${e.summary}">
 
 <meta name="twitter:image"
-content="${entity.image}">
-
-<meta name="entity-rank"
-content="${entity.rank}">
+content="${e.image}">
 
 <script type="application/ld+json">
-${JSON.stringify(jsonld(entity), null, 2)}
+${JSON.stringify({
+
+  '@context': 'https://schema.org',
+
+  '@type': 'Thing',
+
+  name: e.title,
+
+  description: e.summary,
+
+  image: e.image,
+
+  url: e.url,
+
+  sameAs: e.canonical
+
+}, null, 2)}
 </script>
 
 `;
 }
 
 // =========================================================
-// JSONLD
-// =========================================================
-function schemaType(type) {
-
-  if (type === 'person')
-    return 'Person';
-
-  if (type === 'technology')
-    return 'TechArticle';
-
-  if (type === 'place')
-    return 'Place';
-
-  return 'Thing';
-}
-
-function jsonld(entity) {
-
-  return {
-    '@context': 'https://schema.org',
-
-    '@type':
-      schemaType(entity.type),
-
-    name:
-      entity.title,
-
-    description:
-      entity.summary,
-
-    image:
-      entity.image,
-
-    url:
-      entity.life,
-
-    mainEntityOfPage:
-      entity.canonical,
-
-    keywords:
-      entity.linksTo.join(', ')
-  };
-}
-
-// =========================================================
-// ENTITY PAGE
-// =========================================================
-function renderEntity(entity) {
-
-  return page({
-
-    meta: meta(entity),
-
-    body: `
-
-<div class="entity">
-
-<div class="label">
-semantic entity
-</div>
-
-<h1>
-${entity.title}
-</h1>
-
-<p class="meta">
-${entity.type}
-·
-rank ${entity.rank}
-</p>
-
-<img
-class="hero"
-src="${entity.image}">
-
-<p>
-${entity.summary}
-</p>
-
-<h2>
-related entities
-</h2>
-
-<div class="grid">
-
-${entity.linksTo.map(link => `
-<div class="card">
-<a href="/entity/${link}">
-${link}
-</a>
-</div>
-`).join('')}
-
-</div>
-
-<h2>
-backlinks
-</h2>
-
-<div class="grid">
-
-${entity.linkedFrom.map(link => `
-<div class="card">
-<a href="/entity/${link}">
-${link}
-</a>
-</div>
-`).join('')}
-
-</div>
-
-<h2>
-canonical
-</h2>
-
-<p>
-<a href="${entity.canonical}">
-${entity.canonical}
-</a>
-</p>
-
-</div>
-
-`
-  });
-}
-
-// =========================================================
 // HOME
 // =========================================================
-function renderHome(entities) {
+function home(entities) {
 
   return page({
 
@@ -537,25 +423,27 @@ function renderHome(entities) {
 LIFE
 </h1>
 
-<p>
-semantic entity runtime
-</p>
-
 <div class="grid">
 
-${entities.map(entity => `
+${entities.map(e => `
 
-<div class="card">
+<a
+class="card"
+href="/entity/${e.id}">
 
-<a href="/entity/${entity.id}">
-${entity.title}
-</a>
+<img
+loading="lazy"
+src="${e.image}">
+
+<div class="title">
+${e.title}
+</div>
 
 <div class="meta">
-${entity.summary}
+rank ${e.rank}
 </div>
 
-</div>
+</a>
 
 `).join('')}
 
@@ -566,92 +454,66 @@ ${entity.summary}
 }
 
 // =========================================================
-// FEED
+// ENTITY PAGE
 // =========================================================
-function renderFeed(entities) {
+function entityPage(e) {
 
-  const lines = entities.map(entity =>
-    JSON.stringify({
+  return page({
 
-      entity:
-        entity.id,
+    meta: meta(e),
 
-      title:
-        entity.title,
+    body: `
 
-      summary:
-        entity.summary,
+<h1>
+${e.title}
+</h1>
 
-      image:
-        entity.image,
+<img
+class="hero"
+src="${e.image}">
 
-      rank:
-        entity.rank,
+<p>
+${e.summary}
+</p>
 
-      event:
-        'observed',
+<div class="links">
 
-      time:
-        entity.updated
-    })
-  );
+${e.linksTo.map(link => `
+<a href="/entity/${link}">
+${link}
+</a>
+`).join('')}
 
-  return new Response(
-    lines.join('\n'),
-    {
-      headers: {
-        'Content-Type':
-          'application/x-ndjson'
-      }
-    }
-  );
+</div>
+
+`
+  });
 }
 
 // =========================================================
 // SITEMAP
 // =========================================================
-function renderSitemap(entities) {
+function sitemap(entities) {
 
-  const urls =
-    entities.map(entity => `
+  return new Response(`<?xml version="1.0" encoding="UTF-8"?>
+
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+
+${entities.map(e => `
 
 <url>
-
-<loc>
-${SITE}/entity/${entity.id}
-</loc>
-
-<lastmod>
-${entity.updated}
-</lastmod>
-
-<changefreq>
-weekly
-</changefreq>
-
-<priority>
-0.8
-</priority>
-
+<loc>${e.url}</loc>
+<changefreq>weekly</changefreq>
+<priority>0.8</priority>
 </url>
 
-`).join('');
+`).join('')}
 
-  return new Response(`
+</urlset>`,
 
-<?xml version="1.0" encoding="UTF-8"?>
-
-<urlset
-xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-
-${urls}
-
-</urlset>
-
-`, {
+  {
     headers: {
-      'Content-Type':
-        'application/xml'
+      'Content-Type': 'application/xml'
     }
   });
 }
@@ -666,13 +528,17 @@ function robots() {
 User-agent: *
 Allow: /
 
+User-agent: facebookexternalhit
+Allow: /
+
 Sitemap: ${SITE}/sitemap.xml
 
 `, {
+
     headers: {
-      'Content-Type':
-        'text/plain'
+      'Content-Type': 'text/plain'
     }
+
   });
 }
 
@@ -691,37 +557,30 @@ export default {
 
     try {
 
-      const runtime =
-        await buildGraph(env);
+      const entities =
+        await runtime(env);
 
       // HOME
       if (p === '/') {
-        return renderHome(runtime.entities);
-      }
-
-      // GRAPH
-      if (p === '/graph') {
-        return Response.json(runtime.graph);
-      }
-
-      // BACKLINKS
-      if (p === '/backlinks') {
-        return Response.json(runtime.backlinks);
-      }
-
-      // FEED
-      if (p === '/feed') {
-        return renderFeed(runtime.entities);
+        return home(entities);
       }
 
       // SITEMAP
       if (p === '/sitemap.xml') {
-        return renderSitemap(runtime.entities);
+        return sitemap(entities);
       }
 
       // ROBOTS
       if (p === '/robots.txt') {
         return robots();
+      }
+
+      // FEED
+      if (p === '/feed') {
+
+        return Response.json(
+          entities.slice(0, 100)
+        );
       }
 
       // ENTITY
@@ -730,20 +589,20 @@ export default {
         const id =
           p.split('/').pop();
 
-        const entity =
-          runtime.entities.find(
-            e => e.id === id
+        const e =
+          entities.find(
+            x => x.id === id
           );
 
-        if (!entity) {
+        if (!e) {
 
           return new Response(
-            'entity not found',
+            'not found',
             { status: 404 }
           );
         }
 
-        return renderEntity(entity);
+        return entityPage(e);
       }
 
       return new Response(
