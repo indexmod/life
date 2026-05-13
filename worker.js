@@ -1,21 +1,58 @@
 // =========================================================
-// LIFE — semantic entity runtime (LIGHT INDEX VERSION)
+// LIFE — semantic entity runtime (STABLE LIGHT)
 // =========================================================
 
 const SITE = 'https://life.indexmod.press';
 const CANONICAL = 'https://indexmod.press';
 
 // =========================================================
-// LOAD INDEX (FAST PATH)
+// LOAD INDEX (FAST + SAFE + FALLBACK)
 // =========================================================
 async function loadIndex(env) {
   const obj = await env.PAGES.get('_system/index.json');
-  if (!obj) return [];
-  return JSON.parse(await obj.text());
+
+  if (obj) {
+    try {
+      return JSON.parse(await obj.text());
+    } catch {}
+  }
+
+  // fallback → build from md
+  return await buildFallbackIndex(env);
 }
 
 // =========================================================
-// LOAD MD (ONLY FOR SINGLE PAGE)
+// FALLBACK INDEX BUILDER (ONLY IF NO SYSTEM INDEX)
+// =========================================================
+async function buildFallbackIndex(env) {
+  const res = await env.PAGES.list();
+  const files = res.objects.filter(o => o.key.endsWith('.md'));
+
+  const index = [];
+
+  for (const f of files) {
+    const slug = f.key.replace('.md', '');
+
+    const obj = await env.PAGES.get(f.key);
+    if (!obj) continue;
+
+    const md = await obj.text();
+    const parsed = parse(md);
+
+    index.push({
+      id: slug,
+      title: parsed.meta.title || slug,
+      summary: summary(parsed.content),
+      image: image(parsed.content),
+      url: `${SITE}/entity/${slug}`
+    });
+  }
+
+  return index;
+}
+
+// =========================================================
+// GET FILE
 // =========================================================
 const file = slug => `${slug}.md`;
 
@@ -25,7 +62,7 @@ async function getFile(env, slug) {
 }
 
 // =========================================================
-// PARSER (MINIMAL)
+// PARSER (SAFE)
 // =========================================================
 function parse(md = '') {
   const m = md.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
@@ -64,17 +101,20 @@ function summary(t = '') {
 }
 
 // =========================================================
-// IMAGE
+// IMAGE (SAFE FALLBACK)
 // =========================================================
 function image(content = '') {
   const md = content.match(/!\[.*?\]\((.*?)\)/);
   if (md) return md[1];
 
+  const raw = content.match(/https?:\/\/\S+\.(jpg|jpeg|png|webp|gif)/i);
+  if (raw) return raw[0];
+
   return `${SITE}/default-og.jpg`;
 }
 
 // =========================================================
-// META BUILDER (FB + TW + OG)
+// META TAGS
 // =========================================================
 function meta(entity) {
   const desc = entity.summary || '';
@@ -83,7 +123,6 @@ function meta(entity) {
 <title>${entity.title} — LIFE</title>
 
 <meta name="description" content="${desc}">
-
 <link rel="canonical" href="${entity.url}">
 
 <meta property="og:type" content="article">
@@ -101,7 +140,7 @@ function meta(entity) {
 }
 
 // =========================================================
-// PAGE WRAPPER
+// PAGE WRAPPER (MINIMAL)
 // =========================================================
 function page(meta, body) {
   return new Response(`
@@ -110,7 +149,7 @@ function page(meta, body) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-${meta}
+${meta || ''}
 <style>
 body{
   font-family: Georgia, serif;
@@ -122,10 +161,10 @@ body{
 }
 .grid{
   display:grid;
-  gap:10px;
+  gap:8px;
 }
 .card{
-  padding:6px 0;
+  padding:4px 0;
 }
 a{color:blue;text-decoration:none}
 </style>
@@ -142,7 +181,7 @@ ${body}
 }
 
 // =========================================================
-// ENTITY PAGE (NO GRAPH, NO BACKLINKS COMPUTE)
+// ENTITY PAGE (FAST PATH)
 // =========================================================
 async function renderEntity(env, id, index) {
 
@@ -175,7 +214,7 @@ async function renderEntity(env, id, index) {
 }
 
 // =========================================================
-// HOME (VERY LIGHT GRID)
+// HOME (ULTRA LIGHT GRID)
 // =========================================================
 function renderHome(index) {
   return page("", `
@@ -184,9 +223,7 @@ function renderHome(index) {
 <div class="grid">
 ${index.map(i => `
 <div class="card">
-<a href="/entity/${i.id}">
-${i.title}
-</a>
+<a href="/entity/${i.id}">${i.title}</a>
 </div>
 `).join('')}
 </div>
@@ -202,6 +239,7 @@ export default {
     const url = new URL(req.url);
     const p = url.pathname;
 
+    // FAST INDEX LOAD (ONLY ONCE PER REQUEST)
     const index = await loadIndex(env);
 
     // HOME
@@ -215,11 +253,11 @@ export default {
       return renderEntity(env, id, index);
     }
 
-    // SIMPLE JSON INDEX (FOR DEBUG)
+    // DEBUG INDEX
     if (p === '/index.json') {
       return Response.json(index);
     }
 
-    return new Response("404", { status: 404 });
+    return new Response('404', { status: 404 });
   }
 };
