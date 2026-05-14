@@ -1,12 +1,12 @@
 // =========================================================
-// LIFE — semantic entity runtime (STABLE LIGHT)
+// LIFE — LIGHT SEMANTIC INDEX RUNTIME
 // =========================================================
 
 const SITE = 'https://life.indexmod.press';
 const CANONICAL = 'https://indexmod.press';
 
 // =========================================================
-// LOAD INDEX (FAST + SAFE + FALLBACK)
+// INDEX LOADER (FAST + FALLBACK)
 // =========================================================
 async function loadIndex(env) {
   const obj = await env.PAGES.get('_system/index.json');
@@ -14,26 +14,26 @@ async function loadIndex(env) {
   if (obj) {
     try {
       return JSON.parse(await obj.text());
-    } catch {}
+    } catch (e) {
+      return [];
+    }
   }
 
-  // fallback → build from md
-  return await buildFallbackIndex(env);
+  return [];
 }
 
-// =========================================================
-// FALLBACK INDEX BUILDER (ONLY IF NO SYSTEM INDEX)
-// =========================================================
-async function buildFallbackIndex(env) {
+// fallback builder (если index пуст)
+async function buildIndexFallback(env) {
   const res = await env.PAGES.list();
-  const files = res.objects.filter(o => o.key.endsWith('.md'));
+
+  const mdFiles = res.objects
+    .filter(o => o.key.endsWith('.md'))
+    .map(o => o.key.replace('.md', ''));
 
   const index = [];
 
-  for (const f of files) {
-    const slug = f.key.replace('.md', '');
-
-    const obj = await env.PAGES.get(f.key);
+  for (const slug of mdFiles) {
+    const obj = await env.PAGES.get(`${slug}.md`);
     if (!obj) continue;
 
     const md = await obj.text();
@@ -43,8 +43,7 @@ async function buildFallbackIndex(env) {
       id: slug,
       title: parsed.meta.title || slug,
       summary: summary(parsed.content),
-      image: image(parsed.content),
-      url: `${SITE}/entity/${slug}`
+      image: image(parsed.content)
     });
   }
 
@@ -52,43 +51,25 @@ async function buildFallbackIndex(env) {
 }
 
 // =========================================================
-// GET FILE
-// =========================================================
-const file = slug => `${slug}.md`;
-
-async function getFile(env, slug) {
-  const obj = await env.PAGES.get(file(slug));
-  return obj ? await obj.text() : null;
-}
-
-// =========================================================
-// PARSER (SAFE)
+// MD PARSER (MINIMAL)
 // =========================================================
 function parse(md = '') {
   const m = md.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 
-  if (!m) {
-    return { meta: {}, content: md };
-  }
+  if (!m) return { meta: {}, content: md };
 
   const meta = {};
-
-  m[1].split('\n').forEach(line => {
-    const i = line.indexOf(':');
+  m[1].split('\n').forEach(l => {
+    const i = l.indexOf(':');
     if (i === -1) return;
-
-    meta[line.slice(0, i).trim()] =
-      line.slice(i + 1).trim();
+    meta[l.slice(0, i).trim()] = l.slice(i + 1).trim();
   });
 
-  return {
-    meta,
-    content: m[2]
-  };
+  return { meta, content: m[2] };
 }
 
 // =========================================================
-// SUMMARY (LIGHT)
+// SUMMARY
 // =========================================================
 function summary(t = '') {
   return t
@@ -101,36 +82,36 @@ function summary(t = '') {
 }
 
 // =========================================================
-// IMAGE (SAFE FALLBACK)
+// IMAGE
 // =========================================================
 function image(content = '') {
   const md = content.match(/!\[.*?\]\((.*?)\)/);
   if (md) return md[1];
-
-  const raw = content.match(/https?:\/\/\S+\.(jpg|jpeg|png|webp|gif)/i);
-  if (raw) return raw[0];
-
   return `${SITE}/default-og.jpg`;
 }
 
 // =========================================================
-// META TAGS
+// META (OG FIXED FOR SCRAPERS)
 // =========================================================
 function meta(entity) {
   const desc = entity.summary || '';
 
   return `
-<title>${entity.title} — LIFE</title>
+<title>${entity.title} — Life</title>
 
 <meta name="description" content="${desc}">
 <link rel="canonical" href="${entity.url}">
 
+<meta name="robots" content="index,follow,max-image-preview:large">
+
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="LIFE">
+<meta property="og:site_name" content="Life">
 <meta property="og:title" content="${entity.title}">
 <meta property="og:description" content="${desc}">
 <meta property="og:url" content="${entity.url}">
 <meta property="og:image" content="${entity.image}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${entity.title}">
@@ -140,7 +121,7 @@ function meta(entity) {
 }
 
 // =========================================================
-// PAGE WRAPPER (MINIMAL)
+// HTML WRAPPER
 // =========================================================
 function page(meta, body) {
   return new Response(`
@@ -149,7 +130,7 @@ function page(meta, body) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-${meta || ''}
+${meta}
 <style>
 body{
   font-family: Georgia, serif;
@@ -161,12 +142,14 @@ body{
 }
 .grid{
   display:grid;
-  gap:8px;
+  gap:6px;
 }
 .card{
   padding:4px 0;
 }
 a{color:blue;text-decoration:none}
+a:hover{text-decoration:underline}
+img{max-width:100%;margin:20px 0}
 </style>
 </head>
 <body>
@@ -174,14 +157,12 @@ ${body}
 </body>
 </html>
 `, {
-    headers: {
-      "Content-Type": "text/html; charset=utf-8"
-    }
+    headers: { "Content-Type": "text/html; charset=utf-8" }
   });
 }
 
 // =========================================================
-// ENTITY PAGE (FAST PATH)
+// ENTITY PAGE (FAST + CLEAN)
 // =========================================================
 async function renderEntity(env, id, index) {
 
@@ -191,34 +172,30 @@ async function renderEntity(env, id, index) {
     return new Response("not found", { status: 404 });
   }
 
-  const md = await getFile(env, id);
-  const parsed = parse(md);
+  const url = `${SITE}/entity/${id}`;
 
-  const entity = {
-    id,
+  return page(meta({
     title: item.title,
-    summary: item.summary || summary(parsed.content),
+    summary: item.summary,
     image: item.image,
-    url: `${SITE}/entity/${id}`
-  };
+    url
+  }), `
+<h1>${item.title}</h1>
 
-  return page(meta(entity), `
-<h1>${entity.title}</h1>
+<img src="${item.image}">
 
-<img src="${entity.image}" style="max-width:100%;margin:20px 0;">
-
-<p>${entity.summary}</p>
+<p>${item.summary}</p>
 
 <p><a href="${CANONICAL}/${id}">canonical</a></p>
 `);
 }
 
 // =========================================================
-// HOME (ULTRA LIGHT GRID)
+// HOME (MINIMAL GRID — NO RANKS, NO GRAPH)
 // =========================================================
 function renderHome(index) {
   return page("", `
-<h1>LIFE</h1>
+<h1>Life</h1>
 
 <div class="grid">
 ${index.map(i => `
@@ -231,6 +208,38 @@ ${index.map(i => `
 }
 
 // =========================================================
+// SITEMAP (GOOGLE READY)
+// =========================================================
+function sitemap(index) {
+  const urls = index.map(i => `
+<url>
+<loc>${SITE}/entity/${i.id}</loc>
+</url>
+`).join('');
+
+  return new Response(`<?xml version="1.0"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls}
+</urlset>`, {
+    headers: { "Content-Type": "application/xml" }
+  });
+}
+
+// =========================================================
+// ROBOTS
+// =========================================================
+function robots() {
+  return new Response(`
+User-agent: *
+Allow: /
+
+Sitemap: ${SITE}/sitemap.xml
+`, {
+    headers: { "Content-Type": "text/plain" }
+  });
+}
+
+// =========================================================
 // ROUTER
 // =========================================================
 export default {
@@ -239,25 +248,32 @@ export default {
     const url = new URL(req.url);
     const p = url.pathname;
 
-    // FAST INDEX LOAD (ONLY ONCE PER REQUEST)
-    const index = await loadIndex(env);
+    let index = await loadIndex(env);
 
-    // HOME
-    if (p === '/') {
-      return renderHome(index);
+    // fallback if empty
+    if (!index.length) {
+      index = await buildIndexFallback(env);
     }
 
-    // ENTITY
+    if (p === '/') return renderHome(index);
+
+    if (p === '/sitemap.xml') {
+      return sitemap(index);
+    }
+
+    if (p === '/robots.txt') {
+      return robots();
+    }
+
     if (p.startsWith('/entity/')) {
       const id = p.split('/').pop();
       return renderEntity(env, id, index);
     }
 
-    // DEBUG INDEX
     if (p === '/index.json') {
       return Response.json(index);
     }
 
-    return new Response('404', { status: 404 });
+    return new Response("404", { status: 404 });
   }
 };
