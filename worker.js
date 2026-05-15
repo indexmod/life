@@ -1,279 +1,637 @@
 // =========================================================
-// LIFE — LIGHT SEMANTIC INDEX RUNTIME
+// LIFE — ARTICLE PHYSICS ENGINE
+// spheres generated from article structure
 // =========================================================
 
 const SITE = 'https://life.indexmod.press';
-const CANONICAL = 'https://indexmod.press';
 
 // =========================================================
-// INDEX LOADER (FAST + FALLBACK)
+// STORAGE
 // =========================================================
-async function loadIndex(env) {
-  const obj = await env.PAGES.get('_system/index.json');
 
-  if (obj) {
-    try {
-      return JSON.parse(await obj.text());
-    } catch (e) {
-      return [];
-    }
-  }
+const file = slug => `${slug}.md`;
 
-  return [];
+async function getFile(env, slug) {
+  const obj = await env.PAGES.get(file(slug));
+  return obj ? await obj.text() : null;
 }
 
-// fallback builder (если index пуст)
-async function buildIndexFallback(env) {
+async function listFiles(env) {
   const res = await env.PAGES.list();
 
-  const mdFiles = res.objects
+  return res.objects
     .filter(o => o.key.endsWith('.md'))
     .map(o => o.key.replace('.md', ''));
-
-  const index = [];
-
-  for (const slug of mdFiles) {
-    const obj = await env.PAGES.get(`${slug}.md`);
-    if (!obj) continue;
-
-    const md = await obj.text();
-    const parsed = parse(md);
-
-    index.push({
-      id: slug,
-      title: parsed.meta.title || slug,
-      summary: summary(parsed.content),
-      image: image(parsed.content)
-    });
-  }
-
-  return index;
 }
 
 // =========================================================
-// MD PARSER (MINIMAL)
+// PARSER
 // =========================================================
+
 function parse(md = '') {
+
   const m = md.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 
-  if (!m) return { meta: {}, content: md };
+  if (!m) {
+    return {
+      meta: {},
+      content: md,
+      frontmatter: ''
+    };
+  }
 
   const meta = {};
-  m[1].split('\n').forEach(l => {
-    const i = l.indexOf(':');
+
+  m[1].split('\n').forEach(line => {
+
+    const i = line.indexOf(':');
+
     if (i === -1) return;
-    meta[l.slice(0, i).trim()] = l.slice(i + 1).trim();
+
+    meta[
+      line.slice(0, i).trim()
+    ] =
+      line.slice(i + 1).trim();
   });
 
-  return { meta, content: m[2] };
+  return {
+    meta,
+    content: m[2],
+    frontmatter: m[1]
+  };
 }
 
 // =========================================================
-// SUMMARY
+// ANALYSIS
 // =========================================================
-function summary(t = '') {
-  return t
-    .replace(/\[\[(.*?)\]\]/g, '')
-    .replace(/!\[.*?\]\(.*?\)/g, '')
-    .replace(/[#>*_\-\n]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 180);
+
+function analyze(slug, parsed) {
+
+  const text =
+    parsed.content || '';
+
+  const words =
+    text
+      .split(/\s+/)
+      .filter(Boolean);
+
+  const wordCount =
+    words.length;
+
+  const uniqueWords =
+    new Set(
+      words.map(w =>
+        w.toLowerCase()
+      )
+    ).size;
+
+  const links =
+    (
+      text.match(/\[\[(.*?)\]\]/g) || []
+    ).length;
+
+  const headings =
+    (
+      text.match(/^##/gm) || []
+    ).length;
+
+  const images =
+    (
+      text.match(/!\[/g) || []
+    ).length;
+
+  // =====================================================
+  // VISUAL PHYSICS
+  // =====================================================
+
+  const size =
+    Math.max(
+      40,
+      Math.min(
+        220,
+        wordCount / 12
+      )
+    );
+
+  const hue =
+    uniqueWords % 360;
+
+  const saturation =
+    40 + (links * 8);
+
+  const lightness =
+    30 + (headings * 4);
+
+  const blur =
+    Math.max(
+      0,
+      20 - images * 4
+    );
+
+  const glow =
+    Math.min(
+      80,
+      links * 6
+    );
+
+  return {
+
+    id: slug,
+
+    title:
+      parsed.meta.title ||
+      slug,
+
+    frontmatter:
+      parsed.frontmatter,
+
+    metrics: {
+
+      wordCount,
+      uniqueWords,
+      links,
+      headings,
+      images
+    },
+
+    sphere: {
+
+      size,
+
+      hue,
+
+      saturation,
+
+      lightness,
+
+      blur,
+
+      glow
+    }
+  };
 }
 
 // =========================================================
-// IMAGE
+// HTML
 // =========================================================
-function image(content = '') {
-  const md = content.match(/!\[.*?\]\((.*?)\)/);
-  if (md) return md[1];
-  return `${SITE}/default-og.jpg`;
+
+function page(body = '') {
+
+  return new Response(`
+
+<!doctype html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8">
+
+<meta name="viewport"
+content="width=device-width,initial-scale=1">
+
+<title>Life</title>
+
+<style>
+
+*{
+  box-sizing:border-box;
+}
+
+html,
+body{
+  margin:0;
+  padding:0;
+  background:#000;
+  color:#fff;
+  overflow-x:hidden;
+}
+
+body{
+  font-family:Helvetica,Arial,sans-serif;
+}
+
+/* ========================================= */
+/* INDEX */
+/* ========================================= */
+
+.index{
+
+  display:grid;
+
+  grid-template-columns:
+    repeat(auto-fill,minmax(160px,1fr));
+
+  gap:40px;
+
+  padding:60px;
+}
+
+.node{
+
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+
+  cursor:pointer;
+
+  text-decoration:none;
+
+  color:white;
+}
+
+.label{
+
+  margin-top:12px;
+
+  font-size:12px;
+
+  opacity:.7;
+
+  text-align:center;
+}
+
+/* ========================================= */
+/* SPHERE */
+/* ========================================= */
+
+.sphere{
+
+  border-radius:50%;
+
+  transition:
+    transform .2s ease,
+    filter .2s ease;
+
+  animation:
+    float 6s infinite ease-in-out;
+}
+
+.sphere:hover{
+
+  transform:scale(1.08);
+}
+
+@keyframes float {
+
+  0%{
+    transform:translateY(0px);
+  }
+
+  50%{
+    transform:translateY(-8px);
+  }
+
+  100%{
+    transform:translateY(0px);
+  }
+}
+
+/* ========================================= */
+/* ENTITY */
+/* ========================================= */
+
+.entity{
+
+  display:grid;
+
+  grid-template-columns:
+    1fr 1fr;
+
+  min-height:100vh;
+}
+
+.visual{
+
+  display:flex;
+
+  align-items:center;
+  justify-content:center;
+
+  padding:60px;
+}
+
+.editor{
+
+  padding:60px;
+
+  border-left:
+    1px solid rgba(255,255,255,.08);
+}
+
+textarea{
+
+  width:100%;
+  height:70vh;
+
+  background:#111;
+  color:#0f0;
+
+  border:none;
+
+  padding:20px;
+
+  font-family:monospace;
+  font-size:14px;
+
+  resize:none;
+
+  outline:none;
+}
+
+.stats{
+
+  margin-top:30px;
+
+  font-size:13px;
+
+  opacity:.7;
+
+  line-height:1.8;
+}
+
+button{
+
+  margin-top:20px;
+
+  background:#fff;
+  color:#000;
+
+  border:none;
+
+  padding:12px 18px;
+
+  cursor:pointer;
+}
+
+@media(max-width:900px){
+
+  .entity{
+    grid-template-columns:1fr;
+  }
+
+  .editor{
+    border-left:none;
+    border-top:
+      1px solid rgba(255,255,255,.08);
+  }
+}
+
+</style>
+
+</head>
+
+<body>
+
+${body}
+
+</body>
+
+</html>
+
+`, {
+    headers: {
+      'Content-Type':
+        'text/html; charset=utf-8'
+    }
+  });
 }
 
 // =========================================================
-// META (OG FIXED FOR SCRAPERS)
+// SPHERE CSS
 // =========================================================
-function meta(entity) {
-  const desc = entity.summary || '';
+
+function sphereStyle(s) {
 
   return `
-<title>${entity.title} — Life</title>
 
-<meta name="description" content="${desc}">
-<link rel="canonical" href="${entity.url}">
+width:${s.size}px;
+height:${s.size}px;
 
-<meta name="robots" content="index,follow,max-image-preview:large">
+background:
+radial-gradient(
 
-<meta property="og:type" content="article">
-<meta property="og:site_name" content="Life">
-<meta property="og:title" content="${entity.title}">
-<meta property="og:description" content="${desc}">
-<meta property="og:url" content="${entity.url}">
-<meta property="og:image" content="${entity.image}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
+circle at 30% 30%,
 
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${entity.title}">
-<meta name="twitter:description" content="${desc}">
-<meta name="twitter:image" content="${entity.image}">
+hsla(${s.hue},
+${s.saturation}%,
+${s.lightness + 25}%,
+1),
+
+hsla(${s.hue},
+${s.saturation}%,
+${s.lightness}%,
+1)
+
+);
+
+filter:
+blur(${s.blur}px)
+drop-shadow(
+0 0 ${s.glow}px
+hsla(${s.hue},100%,70%,.9)
+);
+
 `;
 }
 
 // =========================================================
-// HTML WRAPPER
+// HOME
 // =========================================================
-function page(meta, body) {
-  return new Response(`
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-${meta}
-<style>
-body{
-  font-family: Georgia, serif;
-  max-width: 900px;
-  margin:0 auto;
-  padding:60px 20px;
-  font-size:18px;
-  line-height:1.6;
-}
-.grid{
-  display:grid;
-  gap:6px;
-}
-.card{
-  padding:4px 0;
-}
-a{color:blue;text-decoration:none}
-a:hover{text-decoration:underline}
-img{max-width:100%;margin:20px 0}
-</style>
-</head>
-<body>
-${body}
-</body>
-</html>
-`, {
-    headers: { "Content-Type": "text/html; charset=utf-8" }
-  });
-}
 
-// =========================================================
-// ENTITY PAGE (FAST + CLEAN)
-// =========================================================
-async function renderEntity(env, id, index) {
+function renderHome(entities) {
 
-  const item = index.find(i => i.id === id);
+  return page(`
 
-  if (!item) {
-    return new Response("not found", { status: 404 });
-  }
+<div class="index">
 
-  const url = `${SITE}/entity/${id}`;
+${entities.map(entity => `
 
-  return page(meta({
-    title: item.title,
-    summary: item.summary,
-    image: item.image,
-    url
-  }), `
-<h1>${item.title}</h1>
+<a
+class="node"
+href="/entity/${entity.id}">
 
-<img src="${item.image}">
-
-<p>${item.summary}</p>
-
-<p><a href="${CANONICAL}/${id}">canonical</a></p>
-`);
-}
-
-// =========================================================
-// HOME (MINIMAL GRID — NO RANKS, NO GRAPH)
-// =========================================================
-function renderHome(index) {
-  return page("", `
-<h1>Life</h1>
-
-<div class="grid">
-${index.map(i => `
-<div class="card">
-<a href="/entity/${i.id}">${i.title}</a>
+<div
+class="sphere"
+style="${sphereStyle(entity.sphere)}">
 </div>
+
+<div class="label">
+${entity.title}
+</div>
+
+</a>
+
 `).join('')}
+
 </div>
+
 `);
 }
 
 // =========================================================
-// SITEMAP (GOOGLE READY)
+// ENTITY
 // =========================================================
-function sitemap(index) {
-  const urls = index.map(i => `
-<url>
-<loc>${SITE}/entity/${i.id}</loc>
-</url>
-`).join('');
 
-  return new Response(`<?xml version="1.0"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls}
-</urlset>`, {
-    headers: { "Content-Type": "application/xml" }
-  });
+function renderEntity(entity) {
+
+  return page(`
+
+<div class="entity">
+
+<div class="visual">
+
+<div>
+
+<div
+class="sphere"
+style="${sphereStyle(entity.sphere)}">
+</div>
+
+<div class="stats">
+
+words:
+${entity.metrics.wordCount}
+
+<br>
+
+unique:
+${entity.metrics.uniqueWords}
+
+<br>
+
+links:
+${entity.metrics.links}
+
+<br>
+
+headings:
+${entity.metrics.headings}
+
+<br>
+
+images:
+${entity.metrics.images}
+
+</div>
+
+</div>
+
+</div>
+
+<div class="editor">
+
+<h1>
+${entity.title}
+</h1>
+
+<textarea
+id="fm">${entity.frontmatter}</textarea>
+
+<button onclick="save()">
+save frontmatter
+</button>
+
+</div>
+
+</div>
+
+<script>
+
+async function save(){
+
+  alert(
+    'frontmatter editing runtime next'
+  );
 }
 
-// =========================================================
-// ROBOTS
-// =========================================================
-function robots() {
-  return new Response(`
-User-agent: *
-Allow: /
+</script>
 
-Sitemap: ${SITE}/sitemap.xml
-`, {
-    headers: { "Content-Type": "text/plain" }
-  });
+`);
 }
 
 // =========================================================
 // ROUTER
 // =========================================================
+
 export default {
+
   async fetch(req, env) {
 
-    const url = new URL(req.url);
-    const p = url.pathname;
+    const url =
+      new URL(req.url);
 
-    let index = await loadIndex(env);
+    const p =
+      url.pathname;
 
-    // fallback if empty
-    if (!index.length) {
-      index = await buildIndexFallback(env);
+    const slugs =
+      await listFiles(env);
+
+    const entities = [];
+
+    for (const slug of slugs) {
+
+      const md =
+        await getFile(env, slug);
+
+      if (!md) continue;
+
+      const parsed =
+        parse(md);
+
+      entities.push(
+        analyze(slug, parsed)
+      );
     }
 
-    if (p === '/') return renderHome(index);
+    // =========================================
+    // HOME
+    // =========================================
 
-    if (p === '/sitemap.xml') {
-      return sitemap(index);
+    if (p === '/') {
+
+      return renderHome(entities);
     }
 
-    if (p === '/robots.txt') {
-      return robots();
-    }
+    // =========================================
+    // ENTITY
+    // =========================================
 
     if (p.startsWith('/entity/')) {
-      const id = p.split('/').pop();
-      return renderEntity(env, id, index);
+
+      const id =
+        p.split('/').pop();
+
+      const entity =
+        entities.find(
+          e => e.id === id
+        );
+
+      if (!entity) {
+
+        return new Response(
+          'not found',
+          { status:404 }
+        );
+      }
+
+      return renderEntity(entity);
     }
 
-    if (p === '/index.json') {
-      return Response.json(index);
+    // =========================================
+    // JSON DEBUG
+    // =========================================
+
+    if (p === '/entities.json') {
+
+      return Response.json(
+        entities
+      );
     }
 
-    return new Response("404", { status: 404 });
+    return new Response(
+      '404',
+      { status:404 }
+    );
   }
 };
