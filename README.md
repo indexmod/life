@@ -1,11 +1,11 @@
-# Life
+# LIFE
 
 ## semantic entity runtime
 
 > Pages are not documents.
 > Pages are semantic entities that persist and interact independently of observation.
 
-Life is an experimental semantic projection layer for IndexMod.
+LIFE is an experimental semantic projection layer for IndexMod.
 
 The system reads an existing universe of markdown files from shared R2 storage and generates:
 
